@@ -1,0 +1,142 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Tim Anderson"
+date: "September 23, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+### Objective
+
+The purpose of the project is to predict the classes below based on the sensor data of an activity.
+
+- Exactly according to the specification (Class A)
+- Throwing the elbows to the front (Class B)
+- Lifting the dumbbell only halfway (Class C)
+- Lowering the dumbbell only halfway (Class D)
+- Throwing the hips to the front (Class E)
+
+### Obtaining and reading the data
+
+```{r}
+# let's get the data
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile="pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile="pml-testing.csv")
+
+train <- read.csv("pml-training.csv",na.strings=c("NA","#DIV/0!",""))
+test <- read.csv("pml-testing.csv",na.strings=c("NA","#DIV/0!",""))
+
+# now setup our environment
+#install.packages('caret', dependencies = TRUE)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rattle)
+
+```
+
+### Data clean-up
+
+Before we can apply analysis we should clean up the data a bit.
+
+```{r}
+# First six columns are not needed
+train1 <- train[,-c(1:6)]
+test1 <- test[,-c(1:6)]
+
+
+# columns with more than 50% NAs are not needed. Probably could have removed columns with any NAs, but I figured 50% was a good threshold
+train2 <- train1[, colSums(is.na(train1)) < nrow(train1) * 0.5]
+test2 <- test1[, colSums(is.na(test1)) < nrow(test1) * 0.5]
+```
+
+### Training and Validation sets
+
+The source data obviously contains both Training and Testing data sets. However, the Test set is too small to calculate a good Out of Sample Error rate, so I'm going to split our data into Training and Validation sets (70%/30%)
+
+```{r}
+# Set up our training and validation sets
+
+set.seed(1234)
+inTrain <- createDataPartition(y=train2$classe, p=0.70, list=FALSE)
+final_train <- train2[inTrain,]
+validation <- train2[-inTrain,]
+
+```
+### Decision Tree
+
+With our data cleaned we're ready to get to the analysis portion. 
+
+```{r}
+
+tree_mod <- rpart(classe ~ ., data=final_train, method="class")
+fancyRpartPlot(tree_mod)
+```
+
+Although the titles are too small to read, I've provided the tree view image above for reference only. The table below shows that the In Sample Error Rate for the single tree is quite high and therefore not too useful.
+
+```{r}
+
+predict_validation_tree <- predict(tree_mod,validation,type="class")
+confusionMatrix(validation$classe,predict_validation_tree)
+
+```
+
+
+### Walking in a Random Forest
+
+After looking at several packages and methods, for this exercise the randomForest provided the best and fastest results.
+
+``` {r}
+# if a tree falls in a random forest and no one is around to hear it, does it still predict a variable?
+rf_mod <- randomForest(classe ~., data=final_train, type="class")
+rf_mod
+
+```
+### In Sample Error
+
+As can be seen in the summary of the rf_mod object above, the random forest model does a very good job of explaining the classe variable for the data in the training set.
+
+
+```{r}
+
+# Apply rf_mod against validation set to see where we are at
+predict_validation <- predict(rf_mod,validation)
+confusionMatrix(validation$classe,predict_validation)
+
+```
+
+### Out of Sample Error
+
+As can be seen in the tables above, the out of sample error rate is quite low with this model.
+
+### Ready to predict on test set.
+
+```{r}
+
+predict_test_rf_mod <- predict(rf_mod,test)
+predict_test_rf_mod
+
+```
+
+The final Random Forest model provided the prediction shown above for the 20 test records.
